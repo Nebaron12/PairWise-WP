@@ -1,7 +1,7 @@
 <?php
 /**
- * Plugin Name: Camera Battle Results Saver
- * Description: Saves Camera Battle widget results to WordPress database
+ * Plugin Name: PairWise Battle
+ * Description: Saves Battles between images to WordPress database
  * Version: 1.0
  * Author: Your Name
  */
@@ -18,8 +18,8 @@ class CameraBattleSaver {
     
     public function __construct() {
         global $wpdb;
-        $this->table_name = $wpdb->prefix . 'camera_battle_results';
-        $this->summary_table_name = $wpdb->prefix . 'camera_battle_summary';
+        $this->table_name = $wpdb->prefix . 'battle_results';
+        $this->summary_table_name = $wpdb->prefix . 'battle_summary';
         
         // Activation hook
         register_activation_hook(__FILE__, array($this, 'create_tables'));
@@ -122,12 +122,12 @@ class CameraBattleSaver {
      */
     public function add_admin_menu() {
         add_menu_page(
-            'Camera Battle Results',           // Page title
-            'Camera Battle',                   // Menu title
+            'PairWise Battle Results',           // Page title
+            'PairWise',                   // Menu title
             'manage_options',                  // Capability
-            'camera-battle-results',           // Menu slug
+            'pairwise-battle-results',           // Menu slug
             array($this, 'render_admin_page'), // Callback function
-            'dashicons-camera',                // Icon
+            'dashicons-images-alt',                // Icon
             30                                 // Position
         );
     }
@@ -137,7 +137,7 @@ class CameraBattleSaver {
      */
     public function enqueue_admin_styles($hook) {
         // Only load on our admin page
-        if ($hook !== 'toplevel_page_camera-battle-results') {
+        if ($hook !== 'toplevel_page_pairwise-battle-results') {
             return;
         }
         
@@ -210,7 +210,7 @@ class CameraBattleSaver {
         ?>
         <div class="wrap cb-admin-wrap">
             <div class="cb-admin-header">
-                <h1>📸 Camera Battle Results</h1>
+                <h1>📸 PairWise Battle Results</h1>
                 <p>View and analyze results from your image comparison tests</p>
             </div>
             
@@ -249,7 +249,7 @@ class CameraBattleSaver {
                 <?php if (!empty($sessions)): ?>
                     <div class="cb-filter-bar">
                         <label for="session-select"><strong>Select Session:</strong></label>
-                        <select id="session-select" class="cb-session-select" onchange="window.location.href='?page=camera-battle-results&tab=per-user&session=' + this.value">
+                        <select id="session-select" class="cb-session-select" onchange="window.location.href='?page=pairwise-battle-results&tab=per-user&session=' + this.value">
                             <?php foreach ($sessions as $session): ?>
                                 <option value="<?php echo esc_attr($session['session_id']); ?>" 
                                         <?php selected($selected_session, $session['session_id']); ?>>

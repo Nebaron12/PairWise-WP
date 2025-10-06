@@ -7,7 +7,7 @@
      data-progress="1"
      data-webhook="">
 
-  <h3 class="cb-heading">Which photo looks better?</h3>
+  <h3 class="cb-heading">Welk product heb je liever in huis?</h3>
 
   <!-- Replace these with your own images. Duplicate/remove <figure> blocks as needed. -->
   <div class="cb-images" style="display:none;">
@@ -32,7 +32,7 @@
   </div>
 
   <div class="cb-footer">
-    <button class="cb-reset" type="button" style="display:none;">Restart</button>
+    <button class="cb-reset" type="button" style="display:none;">Opnieuw starten (ander persoon)</button>
   </div>
 </div>
 
@@ -323,7 +323,7 @@
     const [aIdx,bIdx] = state.pairs[state.current];
     const a = images[aIdx], b = images[bIdx];
     stage.innerHTML = `
-      <div class="cb-round" style="margin-bottom:8px;opacity:.7;">Round ${done+1} of ${total}</div>
+      <div class="cb-round" style="margin-bottom:8px;opacity:.7;">Ronde ${done+1} van de ${total}</div>
       <div class="cb-row">
         ${card(a)}
         ${card(b)}
@@ -378,7 +378,7 @@
 
     return `
       <div class="cb-complete">
-        <p><strong>All battles complete!</strong> Thanks for voting.</p>
+        <p><strong>Alle keuzes zijn gemaakt!</strong> Dankjewel voor de contributie! Klik <a href="https://memora-kids.nl/coming-soon"> hier </a> om je contactgegevens achter te laten.</p>
         <table style="width:100%; border-collapse:collapse;">
           <thead>
             <tr>
