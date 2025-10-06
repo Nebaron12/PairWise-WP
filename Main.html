@@ -1,0 +1,298 @@
+<!-- CAMERA BATTLE (Elementor HTML widget) -->
+<div class="cb-widget" id="camera-battle-1"
+     data-session="mkb-test-v1"
+     data-shuffle="1"
+     data-progress="1"
+     data-webhook="">
+
+  <h3 class="cb-heading">Which photo looks better?</h3>
+
+  <!-- Replace these with your own images. Duplicate/remove <figure> blocks as needed. -->
+  <div class="cb-images" style="display:none;">
+    <figure data-title="Camera A">
+      <img src="https://memora-kids.nl/wp-content/uploads/2025/10/Test1.png" alt="Camera A sample">
+    </figure>
+    <figure data-title="Camera B">
+      <img src="https://memora-kids.nl/wp-content/uploads/2025/10/Test2.png" alt="Camera B sample">
+    </figure>
+    <figure data-title="Camera C">
+      <img src="https://memora-kids.nl/wp-content/uploads/2025/10/Test3.png" alt="Camera C sample">
+    </figure>
+    <figure data-title="Camera D">
+      <img src="https://memora-kids.nl/wp-content/uploads/2025/10/Test4.png" alt="Camera D sample">
+    </figure>
+  </div>
+
+  <div class="cb-stage" aria-live="polite"></div>
+
+  <div class="cb-progress" hidden>
+    <div class="cb-progress-bar" style="width:0%"></div>
+  </div>
+
+  <div class="cb-footer">
+    <button class="cb-reset" type="button">Restart</button>
+    <button class="cb-export" type="button" title="Download your session’s results as CSV">Download CSV</button>
+  </div>
+</div>
+
+<style>
+  .cb-widget{ max-width:980px; margin:0 auto; text-align:center; }
+  .cb-heading{ margin:0 0 12px; font-weight:700; }
+  .cb-row{ display:flex; gap:16px; align-items:stretch; justify-content:center; flex-wrap:wrap; }
+  .cb-card{ flex:1 1 380px; border:0; background:#fff; cursor:pointer; padding:0;
+            box-shadow:0 2px 10px rgba(0,0,0,.08); border-radius:12px; overflow:hidden;
+            transition:transform .08s ease, box-shadow .2s ease; }
+  .cb-card:hover{ transform:translateY(-2px); box-shadow:0 6px 24px rgba(0,0,0,.12); }
+  .cb-card img{ width:100%; height:auto; display:block; }
+  .cb-card figcaption{ padding:10px 12px; font-size:14px; opacity:.8; }
+  .cb-progress{ height:8px; background:#eee; border-radius:999px; overflow:hidden; margin:14px 0; }
+  .cb-progress-bar{ height:8px; width:0%; background:linear-gradient(90deg,#9ae6b4,#38b2ac); }
+  .cb-footer{ margin-top:8px; display:flex; gap:8px; justify-content:center; flex-wrap:wrap; }
+  .cb-footer button{ background:#f3f4f6; border:1px solid #e5e7eb; border-radius:8px; padding:8px 12px; cursor:pointer; }
+  .cb-complete{ padding:24px; background:#f9fafb; border-radius:12px; }
+  @media (prefers-reduced-motion: reduce){ .cb-card{ transition:none; } }
+</style>
+
+<script>
+(() => {
+  const els = document.querySelectorAll('.cb-widget');
+  els.forEach(init);
+
+  function init(root){
+    const cfg = readConfig(root);
+    const images = readImages(root);
+    if (images.length < 2){
+      root.querySelector('.cb-stage').innerHTML =
+        '<em>Add at least 2 photos inside the hidden <code>.cb-images</code> block.</em>';
+      return;
+    }
+
+    // state in localStorage
+    let state = loadState(cfg) || startState(images.length, !!cfg.shuffle);
+    saveState(cfg, state);
+
+    // first render
+    render(root, cfg, images, state);
+
+    // events
+    root.addEventListener('click', (e) => {
+      const card = e.target.closest('.cb-card');
+      if (card){
+        e.preventDefault();
+        const winnerId = parseInt(card.getAttribute('data-choice'),10);
+        const [aIdx,bIdx] = state.pairs[state.current];
+        const a = images[aIdx], b = images[bIdx];
+
+        // record result
+        state.results.push({
+          image1_id: a.id, image2_id: b.id, winner_id: winnerId,
+          image1_title: a.title, image2_title: b.title,
+          winner_title: (winnerId === a.id ? a.title : b.title),
+          ts: new Date().toISOString()
+        });
+        state.appearances[a.id] = (state.appearances[a.id]||0) + 1;
+        state.appearances[b.id] = (state.appearances[b.id]||0) + 1;
+        state.wins[winnerId] = (state.wins[winnerId]||0) + 1;
+
+        // optional webhook
+        if (cfg.webhook){
+          try {
+            fetch(cfg.webhook, {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({
+                session: cfg.session,
+                container: cfg.id,
+                page: location.href,
+                image1_id: a.id, image2_id: b.id, winner_id: winnerId,
+                image1_title: a.title, image2_title: b.title,
+                ts: new Date().toISOString()
+              })
+            }).catch(()=>{});
+          } catch(_) {}
+        }
+
+        state.current++;
+        saveState(cfg, state);
+        render(root, cfg, images, state);
+      }
+    });
+
+    root.querySelector('.cb-reset').addEventListener('click', () => {
+      clearState(cfg);
+      state = startState(images.length, !!cfg.shuffle);
+      saveState(cfg, state);
+      render(root, cfg, images, state);
+    });
+
+    root.querySelector('.cb-export').addEventListener('click', () => {
+      if (!state.results.length){
+        alert('No votes yet to export.');
+        return;
+      }
+      downloadCSV(state.results, `camera-battle-${cfg.id}-${Date.now()}.csv`);
+    });
+  }
+
+  function readConfig(root){
+    return {
+      id: root.id || 'cb-'+Math.random().toString(36).slice(2,8),
+      session: root.getAttribute('data-session') || 'default-session',
+      shuffle: root.getAttribute('data-shuffle') === '1',
+      progress: root.getAttribute('data-progress') === '1',
+      webhook: (root.getAttribute('data-webhook') || '').trim()
+    };
+  }
+
+  function readImages(root){
+    const figs = root.querySelectorAll('.cb-images figure');
+    const items = [];
+    let id = 1;
+    figs.forEach(f => {
+      const img = f.querySelector('img');
+      if (!img) return;
+      const url = (img.getAttribute('src')||'').trim();
+      if (!url) return;
+      const title = f.getAttribute('data-title') || img.getAttribute('alt') || `Image ${id}`;
+      items.push({ id:id++, url, title });
+    });
+    return items;
+  }
+
+  function startState(n, doShuffle){
+    const pairs = [];
+    for (let i=0;i<n;i++){
+      for (let j=i+1;j<n;j++) pairs.push([i,j]);
+    }
+    if (doShuffle) shuffle(pairs);
+    return {
+      pairs, current: 0, done: [],
+      wins: {}, appearances: {}, results: []
+    };
+  }
+
+  function shuffle(arr){
+    for(let i=arr.length-1;i>0;i--){
+      const j = Math.floor(Math.random()*(i+1));
+      [arr[i],arr[j]]=[arr[j],arr[i]];
+    }
+    return arr;
+  }
+
+  function key(cfg){ return `CB_${cfg.session}_${cfg.id}`; }
+  function loadState(cfg){
+    try{ const raw = localStorage.getItem(key(cfg)); return raw ? JSON.parse(raw) : null; }
+    catch(_){ return null; }
+  }
+  function saveState(cfg, state){
+    try{ localStorage.setItem(key(cfg), JSON.stringify(state)); } catch(_){}
+  }
+  function clearState(cfg){
+    try{ localStorage.removeItem(key(cfg)); } catch(_){}
+  }
+
+  function render(root, cfg, images, state){
+    const stage = root.querySelector('.cb-stage');
+    const progWrap = root.querySelector('.cb-progress');
+    const bar = root.querySelector('.cb-progress-bar');
+    const total = state.pairs.length;
+    const done = Math.min(state.current, total);
+    const pct = total ? Math.round((done/total)*100) : 0;
+
+    if (cfg.progress){
+      progWrap.hidden = false;
+      bar.style.width = pct + '%';
+    } else {
+      progWrap.hidden = true;
+    }
+
+    if (done >= total){
+      stage.innerHTML = renderComplete(images, state);
+      return;
+    }
+
+    const [aIdx,bIdx] = state.pairs[state.current];
+    const a = images[aIdx], b = images[bIdx];
+    stage.innerHTML = `
+      <div class="cb-round" style="margin-bottom:8px;opacity:.7;">Round ${done+1} of ${total}</div>
+      <div class="cb-row">
+        ${card(a)}
+        ${card(b)}
+      </div>
+    `;
+  }
+
+  function esc(s){ return String(s).replace(/[&<>"]/g, r=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[r])); }
+  function card(img){
+    return `
+      <button class="cb-card" data-choice="${img.id}" aria-label="Vote for ${esc(img.title)}" type="button">
+        <figure>
+          <img src="${esc(img.url)}" alt="${esc(img.title)}" loading="lazy">
+          <figcaption>${esc(img.title)}</figcaption>
+        </figure>
+      </button>
+    `;
+  }
+
+  function renderComplete(images, state){
+    // build leaderboard
+    const rows = images.map(img => {
+      const app = state.appearances[img.id] || 0;
+      const win = state.wins[img.id] || 0;
+      const pct = app ? Math.round((win/app)*1000)/10 : 0;
+      return { id: img.id, title: img.title, wins: win, appearances: app, pct };
+    }).sort((a,b) => b.wins - a.wins || b.pct - a.pct);
+
+    const items = rows.map(r => `
+      <tr>
+        <td>${esc(r.title)} (#${r.id})</td>
+        <td style="text-align:right;">${r.wins}</td>
+        <td style="text-align:right;">${r.appearances}</td>
+        <td style="text-align:right;">${r.pct}%</td>
+      </tr>
+    `).join('');
+
+    return `
+      <div class="cb-complete">
+        <p><strong>All battles complete!</strong> Thanks for voting.</p>
+        <table style="width:100%; border-collapse:collapse;">
+          <thead>
+            <tr>
+              <th style="text-align:left;">Image</th>
+              <th style="text-align:right;">Wins</th>
+              <th style="text-align:right;">Appearances</th>
+              <th style="text-align:right;">Win %</th>
+            </tr>
+          </thead>
+          <tbody>${items || '<tr><td colspan="4">No results.</td></tr>'}</tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function downloadCSV(results, filename){
+    const header = ['timestamp','image1_id','image1_title','image2_id','image2_title','winner_id','winner_title'];
+    const lines = [header.join(',')];
+    results.forEach(r => {
+      lines.push([
+        r.ts,
+        r.image1_id, csvEsc(r.image1_title),
+        r.image2_id, csvEsc(r.image2_title),
+        r.winner_id, csvEsc(r.winner_title)
+      ].join(','));
+    });
+    const blob = new Blob([lines.join('\n')], {type:'text/csv;charset=utf-8;'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 200);
+  }
+  function csvEsc(val){
+    const s = String(val ?? '');
+    if (/[",\n]/.test(s)) return '"' + s.replace(/"/g,'""') + '"';
+    return s;
+  }
+})();
+</script>
