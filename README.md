@@ -154,10 +154,46 @@ If you see CSV downloading instead of database save, check:
 - Uses WordPress nonce for additional security
 - SQL injection protection via prepared statements
 
+## WordPress Admin Dashboard
+
+The plugin adds a **Camera Battle** menu item in the WordPress admin sidebar with three tabs:
+
+### 1. Overall Results Tab
+- Shows aggregated results across all users for the selected session
+- Displays total clicks, complete wins, appearances, and click rate for each image
+- Ranked by popularity
+- Color-coded badges (green = high performance, yellow = medium, red = low)
+
+### 2. Per User Results Tab
+- Shows individual results for each user who completed the test
+- Groups data by user session (container_id)
+- Displays when each user completed the test
+- Shows their personal rankings and choices
+
+### 3. Raw Vote Data Tab
+- Shows individual vote records
+- Details of each image comparison and winner
+- Timestamped entries
+- Useful for detailed analysis and debugging
+
+### Admin Features
+- **Session selector**: Switch between different test sessions
+- **Statistics cards**: Quick overview of total votes, sessions, and unique users
+- **Export CSV**: Download complete session data including summary and raw votes
+- **Responsive design**: Clean, modern interface matching WordPress admin style
+
+### Accessing the Dashboard
+1. Log into WordPress admin
+2. Look for **Camera Battle** in the sidebar (with camera icon 📸)
+3. Select a session from the dropdown
+4. Switch between tabs to view different reports
+5. Click "Export CSV" to download data
+
 ## Future Enhancements
 
 Consider adding:
-- Admin dashboard to view results
-- Data export functionality in WordPress admin
+- Charts and visualizations (graphs, pie charts)
+- Date range filtering
 - Automatic cleanup of old session data
-- Analytics and reporting features
+- Email notifications for new completed tests
+- Comparison between different sessions
