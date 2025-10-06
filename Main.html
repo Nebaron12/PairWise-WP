@@ -92,7 +92,13 @@
         });
         state.appearances[a.id] = (state.appearances[a.id]||0) + 1;
         state.appearances[b.id] = (state.appearances[b.id]||0) + 1;
-        state.wins[winnerId] = (state.wins[winnerId]||0) + 1;
+        state.clicks[winnerId] = (state.clicks[winnerId]||0) + 1;
+        
+        // check if this is the final comparison for this image
+        const isLastComparison = state.current + 1 >= state.pairs.length;
+        if (isLastComparison) {
+          state.completeWins[winnerId] = (state.completeWins[winnerId]||0) + 1;
+        }
 
         // optional webhook
         if (cfg.webhook){
@@ -130,7 +136,7 @@
         alert('No votes yet to export.');
         return;
       }
-      downloadCSV(state.results, `camera-battle-${cfg.id}-${Date.now()}.csv`);
+      saveToWordPress(state.results, cfg, images, state);
     });
   }
 
@@ -167,7 +173,7 @@
     if (doShuffle) shuffle(pairs);
     return {
       pairs, current: 0, done: [],
-      wins: {}, appearances: {}, results: []
+      clicks: {}, completeWins: {}, appearances: {}, results: []
     };
   }
 
@@ -238,15 +244,17 @@
     // build leaderboard
     const rows = images.map(img => {
       const app = state.appearances[img.id] || 0;
-      const win = state.wins[img.id] || 0;
-      const pct = app ? Math.round((win/app)*1000)/10 : 0;
-      return { id: img.id, title: img.title, wins: win, appearances: app, pct };
-    }).sort((a,b) => b.wins - a.wins || b.pct - a.pct);
+      const clicks = state.clicks[img.id] || 0;
+      const completeWins = state.completeWins[img.id] || 0;
+      const pct = app ? Math.round((clicks/app)*1000)/10 : 0;
+      return { id: img.id, title: img.title, clicks: clicks, completeWins: completeWins, appearances: app, pct };
+    }).sort((a,b) => b.clicks - a.clicks || b.pct - a.pct);
 
     const items = rows.map(r => `
       <tr>
         <td>${esc(r.title)} (#${r.id})</td>
-        <td style="text-align:right;">${r.wins}</td>
+        <td style="text-align:right;">${r.clicks}</td>
+        <td style="text-align:right;">${r.completeWins}</td>
         <td style="text-align:right;">${r.appearances}</td>
         <td style="text-align:right;">${r.pct}%</td>
       </tr>
@@ -259,15 +267,59 @@
           <thead>
             <tr>
               <th style="text-align:left;">Image</th>
-              <th style="text-align:right;">Wins</th>
+              <th style="text-align:right;">Clicks</th>
+              <th style="text-align:right;">Complete Wins</th>
               <th style="text-align:right;">Appearances</th>
-              <th style="text-align:right;">Win %</th>
+              <th style="text-align:right;">Click %</th>
             </tr>
           </thead>
-          <tbody>${items || '<tr><td colspan="4">No results.</td></tr>'}</tbody>
+          <tbody>${items || '<tr><td colspan="5">No results.</td></tr>'}</tbody>
         </table>
       </div>
     `;
+  }
+
+  function saveToWordPress(results, cfg, images, state){
+    // Prepare summary data with clicks and complete wins
+    const summaryData = images.map(img => ({
+      id: img.id,
+      title: img.title,
+      clicks: state.clicks[img.id] || 0,
+      completeWins: state.completeWins[img.id] || 0,
+      appearances: state.appearances[img.id] || 0
+    }));
+
+    // Send to WordPress REST API endpoint
+    fetch('/wp-json/camera-battle/v1/save-results', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-WP-Nonce': wpApiSettings?.nonce || ''
+      },
+      body: JSON.stringify({
+        session: cfg.session,
+        container_id: cfg.id,
+        timestamp: new Date().toISOString(),
+        results: results,
+        summary: summaryData
+      })
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        alert('Results saved successfully to database!');
+      } else {
+        alert('Error saving results: ' + (data.message || 'Unknown error'));
+        // Fallback to CSV download
+        downloadCSV(results, `camera-battle-${cfg.id}-${Date.now()}.csv`);
+      }
+    })
+    .catch(error => {
+      console.error('Error saving to WordPress:', error);
+      alert('Could not save to database. Downloading CSV instead.');
+      // Fallback to CSV download
+      downloadCSV(results, `camera-battle-${cfg.id}-${Date.now()}.csv`);
+    });
   }
 
   function downloadCSV(results, filename){
