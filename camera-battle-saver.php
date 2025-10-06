@@ -230,42 +230,35 @@ class CameraBattleSaver {
             <div class="cb-tabs">
                 <button class="cb-tab-btn active" onclick="switchTab(event, 'overall')">Overall Results</button>
                 <button class="cb-tab-btn" onclick="switchTab(event, 'per-user')">Per User Results</button>
-                <button class="cb-tab-btn" onclick="switchTab(event, 'raw-data')">Raw Vote Data</button>
             </div>
-            
-            <?php if (!empty($sessions)): ?>
-                <div class="cb-filter-bar">
-                    <label for="session-select"><strong>Select Session:</strong></label>
-                    <select id="session-select" class="cb-session-select" onchange="window.location.href='?page=camera-battle-results&session=' + this.value">
-                        <?php foreach ($sessions as $session): ?>
-                            <option value="<?php echo esc_attr($session['session_id']); ?>" 
-                                    <?php selected($selected_session, $session['session_id']); ?>>
-                                <?php echo esc_html($session['session_id']); ?> 
-                                (<?php echo $session['total_votes']; ?> votes, 
-                                <?php echo date('M j, Y', strtotime($session['last_vote'])); ?>)
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                    
-                    <button class="cb-export-btn" onclick="exportSessionData('<?php echo esc_js($selected_session); ?>')">
-                        Export CSV
-                    </button>
-                </div>
-            <?php endif; ?>
             
             <!-- Overall Results Tab -->
             <div id="overall" class="cb-tab-content">
-                <?php $this->render_overall_results($selected_session); ?>
+                <?php $this->render_overall_results(); ?>
             </div>
             
             <!-- Per User Results Tab -->
             <div id="per-user" class="cb-tab-content" style="display:none;">
+                <?php if (!empty($sessions)): ?>
+                    <div class="cb-filter-bar">
+                        <label for="session-select"><strong>Select Session:</strong></label>
+                        <select id="session-select" class="cb-session-select" onchange="window.location.href='?page=camera-battle-results&tab=per-user&session=' + this.value">
+                            <?php foreach ($sessions as $session): ?>
+                                <option value="<?php echo esc_attr($session['session_id']); ?>" 
+                                        <?php selected($selected_session, $session['session_id']); ?>>
+                                    <?php echo esc_html($session['session_id']); ?> 
+                                    (<?php echo $session['total_votes']; ?> votes, 
+                                    <?php echo date('M j, Y', strtotime($session['last_vote'])); ?>)
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        
+                        <button class="cb-export-btn" onclick="exportSessionData('<?php echo esc_js($selected_session); ?>')">
+                            Export CSV
+                        </button>
+                    </div>
+                <?php endif; ?>
                 <?php $this->render_per_user_results($selected_session); ?>
-            </div>
-            
-            <!-- Raw Data Tab -->
-            <div id="raw-data" class="cb-tab-content" style="display:none;">
-                <?php $this->render_raw_data($selected_session); ?>
             </div>
         </div>
         
@@ -291,23 +284,28 @@ class CameraBattleSaver {
         function exportSessionData(sessionId) {
             window.location.href = '<?php echo admin_url('admin-ajax.php'); ?>?action=cb_export_csv&session=' + sessionId;
         }
+        
+        // Check if we need to switch to per-user tab on page load
+        <?php if (isset($_GET['tab']) && $_GET['tab'] === 'per-user'): ?>
+        document.addEventListener('DOMContentLoaded', function() {
+            var perUserTab = document.querySelector('.cb-tab-btn:nth-child(2)');
+            if (perUserTab) {
+                perUserTab.click();
+            }
+        });
+        <?php endif; ?>
         </script>
         <?php
     }
     
     /**
-     * Render overall results
+     * Render overall results (all users, all sessions combined)
      */
-    private function render_overall_results($session_id) {
+    private function render_overall_results() {
         global $wpdb;
         
-        if (empty($session_id)) {
-            echo '<div class="cb-no-data">No session data available. Start collecting votes first!</div>';
-            return;
-        }
-        
-        // Get aggregated results across all users in this session
-        $results = $wpdb->get_results($wpdb->prepare(
+        // Get aggregated results across ALL users and ALL sessions
+        $results = $wpdb->get_results(
             "SELECT 
                 image_title,
                 SUM(clicks) as total_clicks,
@@ -315,19 +313,19 @@ class CameraBattleSaver {
                 SUM(appearances) as total_appearances,
                 ROUND(SUM(clicks) * 100.0 / NULLIF(SUM(appearances), 0), 1) as click_rate
              FROM {$this->summary_table_name}
-             WHERE session_id = %s
              GROUP BY image_title
              ORDER BY total_clicks DESC",
-            $session_id
-        ), ARRAY_A);
+            ARRAY_A
+        );
         
         if (empty($results)) {
-            echo '<div class="cb-no-data">No results yet for this session.</div>';
+            echo '<div class="cb-no-data">No results yet. Start collecting votes first!</div>';
             return;
         }
         
         ?>
-        <h2>Aggregated Results for Session: <?php echo esc_html($session_id); ?></h2>
+        <h2>Overall Results - All Users & Sessions</h2>
+        <p style="color: #666; margin-bottom: 20px;">Aggregated data from all tests ever conducted</p>
         <table class="cb-table">
             <thead>
                 <tr>
@@ -439,61 +437,6 @@ class CameraBattleSaver {
                 </table>
             </div>
         <?php endforeach; ?>
-        <?php
-    }
-    
-    /**
-     * Render raw vote data
-     */
-    private function render_raw_data($session_id) {
-        global $wpdb;
-        
-        if (empty($session_id)) {
-            echo '<div class="cb-no-data">No session data available.</div>';
-            return;
-        }
-        
-        // Get raw battle results
-        $raw_data = $wpdb->get_results($wpdb->prepare(
-            "SELECT *
-             FROM {$this->table_name}
-             WHERE session_id = %s
-             ORDER BY timestamp DESC
-             LIMIT 500",
-            $session_id
-        ), ARRAY_A);
-        
-        if (empty($raw_data)) {
-            echo '<div class="cb-no-data">No raw data yet for this session.</div>';
-            return;
-        }
-        
-        ?>
-        <h2>Raw Vote Data for Session: <?php echo esc_html($session_id); ?></h2>
-        <p style="color: #666;">Showing most recent 500 votes</p>
-        
-        <table class="cb-table">
-            <thead>
-                <tr>
-                    <th>Time</th>
-                    <th>User</th>
-                    <th>Image 1</th>
-                    <th>Image 2</th>
-                    <th>Winner</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($raw_data as $row): ?>
-                    <tr>
-                        <td><?php echo date('M j, Y g:i a', strtotime($row['timestamp'])); ?></td>
-                        <td><?php echo esc_html($row['container_id']); ?></td>
-                        <td><?php echo esc_html($row['image1_title']); ?></td>
-                        <td><?php echo esc_html($row['image2_title']); ?></td>
-                        <td><strong><?php echo esc_html($row['winner_title']); ?></strong></td>
-                    </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
         <?php
     }
     
