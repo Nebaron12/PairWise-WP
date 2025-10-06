@@ -1,4 +1,6 @@
-<!-- CAMERA BATTLE (Elementor HTML widget) -->
+<!-- CAMERA BATTLE (Elementor H  <div class="cb-footer">
+    <button class="cb-reset" type="button">Restart</button>
+  </div>widget) -->
 <div class="cb-widget" id="camera-battle-1"
      data-session="mkb-test-v1"
      data-shuffle="1"
@@ -58,8 +60,8 @@
   const els = document.querySelectorAll('.cb-widget');
   els.forEach(init);
 
-  function init(root){
-    const cfg = readConfig(root);
+  async function init(root){
+    const cfg = await readConfig(root);
     const images = readImages(root);
     if (images.length < 2){
       root.querySelector('.cb-stage').innerHTML =
@@ -93,12 +95,6 @@
         state.appearances[a.id] = (state.appearances[a.id]||0) + 1;
         state.appearances[b.id] = (state.appearances[b.id]||0) + 1;
         state.clicks[winnerId] = (state.clicks[winnerId]||0) + 1;
-        
-        // check if this is the final comparison for this image
-        const isLastComparison = state.current + 1 >= state.pairs.length;
-        if (isLastComparison) {
-          state.completeWins[winnerId] = (state.completeWins[winnerId]||0) + 1;
-        }
 
         // optional webhook
         if (cfg.webhook){
@@ -120,6 +116,46 @@
 
         state.current++;
         saveState(cfg, state);
+        
+        // Check if test is complete and auto-save
+        const isTestComplete = state.current >= state.pairs.length;
+        if (isTestComplete) {
+          // Calculate complete wins based on most clicked image
+          const completeWins = {};
+          let maxClicks = 0;
+          let topImages = [];
+          
+          // Find the maximum clicks and all images with that count
+          images.forEach(img => {
+            const clicks = state.clicks[img.id] || 0;
+            if (clicks > maxClicks) {
+              maxClicks = clicks;
+              topImages = [img.id];
+            } else if (clicks === maxClicks) {
+              topImages.push(img.id);
+            }
+          });
+          
+          let winnerId = null;
+          
+          // If there's a tie, use head-to-head comparison
+          if (topImages.length > 1) {
+            winnerId = resolveHeadToHead(topImages, state.results);
+          } else if (topImages.length === 1) {
+            winnerId = topImages[0];
+          }
+          
+          if (winnerId !== null) {
+            completeWins[winnerId] = 1;
+          }
+          
+          state.completeWins = completeWins;
+          saveState(cfg, state);
+          
+          // Auto-save to database
+          saveToWordPress(state.results, cfg, images, state);
+        }
+        
         render(root, cfg, images, state);
       }
     });
@@ -130,24 +166,40 @@
       saveState(cfg, state);
       render(root, cfg, images, state);
     });
-
-    root.querySelector('.cb-export').addEventListener('click', () => {
-      if (!state.results.length){
-        alert('No votes yet to export.');
-        return;
-      }
-      saveToWordPress(state.results, cfg, images, state);
-    });
   }
 
-  function readConfig(root){
+  async function readConfig(root){
+    // Get or create unique session ID based on user
+    const baseSession = root.getAttribute('data-session') || 'camera-battle';
+    const userSession = await getUserSession(baseSession);
+    
     return {
       id: root.id || 'cb-'+Math.random().toString(36).slice(2,8),
-      session: root.getAttribute('data-session') || 'default-session',
+      session: userSession,
       shuffle: root.getAttribute('data-shuffle') === '1',
       progress: root.getAttribute('data-progress') === '1',
       webhook: (root.getAttribute('data-webhook') || '').trim()
     };
+  }
+  
+  async function getUserSession(baseSession){
+    // Try to get stored session for this user
+    const storageKey = 'CB_USER_SESSION';
+    let userSession = localStorage.getItem(storageKey);
+    
+    if (userSession) {
+      return userSession;
+    }
+    
+    // Generate new session with timestamp and random ID
+    const timestamp = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const randomId = Math.random().toString(36).substring(2, 8);
+    userSession = `${baseSession}-${timestamp}-${randomId}`;
+    
+    // Store for this browser session
+    localStorage.setItem(storageKey, userSession);
+    
+    return userSession;
   }
 
   function readImages(root){
@@ -183,6 +235,43 @@
       [arr[i],arr[j]]=[arr[j],arr[i]];
     }
     return arr;
+  }
+  
+  function resolveHeadToHead(tiedImages, results){
+    // When multiple images are tied, find who won in direct comparisons
+    // Count wins between the tied images only
+    const headToHeadWins = {};
+    
+    tiedImages.forEach(id => {
+      headToHeadWins[id] = 0;
+    });
+    
+    // Look through all results for direct comparisons between tied images
+    results.forEach(result => {
+      const img1InTie = tiedImages.includes(result.image1_id);
+      const img2InTie = tiedImages.includes(result.image2_id);
+      
+      // Only count if both images in the comparison are in the tied group
+      if (img1InTie && img2InTie) {
+        if (tiedImages.includes(result.winner_id)) {
+          headToHeadWins[result.winner_id]++;
+        }
+      }
+    });
+    
+    // Find the image with most head-to-head wins
+    let maxH2HWins = -1;
+    let h2hWinner = null;
+    
+    tiedImages.forEach(id => {
+      if (headToHeadWins[id] > maxH2HWins) {
+        maxH2HWins = headToHeadWins[id];
+        h2hWinner = id;
+      }
+    });
+    
+    // If still tied (shouldn't happen in normal cases), return first one
+    return h2hWinner || tiedImages[0];
   }
 
   function key(cfg){ return `CB_${cfg.session}_${cfg.id}`; }
@@ -307,18 +396,14 @@
     .then(response => response.json())
     .then(data => {
       if (data.success) {
-        alert('Results saved successfully to database!');
+        console.log('Results saved successfully to database!');
+        // Show subtle success message in the UI instead of alert
       } else {
-        alert('Error saving results: ' + (data.message || 'Unknown error'));
-        // Fallback to CSV download
-        downloadCSV(results, `camera-battle-${cfg.id}-${Date.now()}.csv`);
+        console.error('Error saving results:', data.message || 'Unknown error');
       }
     })
     .catch(error => {
       console.error('Error saving to WordPress:', error);
-      alert('Could not save to database. Downloading CSV instead.');
-      // Fallback to CSV download
-      downloadCSV(results, `camera-battle-${cfg.id}-${Date.now()}.csv`);
     });
   }
 
