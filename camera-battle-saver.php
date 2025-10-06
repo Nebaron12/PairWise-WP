@@ -383,9 +383,10 @@ class CameraBattleSaver {
             return;
         }
         
-        // Get all user data for this session
+        // Get all user data for this session (each row is a separate test completion)
         $user_results = $wpdb->get_results($wpdb->prepare(
             "SELECT 
+                id,
                 container_id,
                 image_title,
                 clicks,
@@ -398,25 +399,42 @@ class CameraBattleSaver {
             $session_id
         ), ARRAY_A);
         
-        // Organize data by container and image
+        // Organize data by unique test completion (using id + timestamp as unique identifier)
         $organized_data = array();
+        $totals = array();
+        
+        // Initialize totals
+        foreach ($images as $img) {
+            $totals[$img['image_title']] = 0;
+        }
+        
         foreach ($user_results as $row) {
-            if (!isset($organized_data[$row['container_id']])) {
-                $organized_data[$row['container_id']] = array(
+            // Use combination of container_id and timestamp as unique key for each test
+            $unique_key = $row['container_id'] . '_' . $row['timestamp'];
+            
+            if (!isset($organized_data[$unique_key])) {
+                $organized_data[$unique_key] = array(
+                    'container_id' => $row['container_id'],
                     'timestamp' => $row['timestamp'],
                     'images' => array()
                 );
             }
-            $organized_data[$row['container_id']]['images'][$row['image_title']] = array(
+            
+            $organized_data[$unique_key]['images'][$row['image_title']] = array(
                 'clicks' => $row['clicks'],
                 'complete_wins' => $row['complete_wins'],
                 'appearances' => $row['appearances']
             );
+            
+            // Add to totals if this image won
+            if ($row['complete_wins'] > 0) {
+                $totals[$row['image_title']]++;
+            }
         }
         
         ?>
         <h2>Per User Results for Session: <?php echo esc_html($session_id); ?></h2>
-        <p style="color: #666; margin-bottom: 20px;">Each row represents one user's test results</p>
+        <p style="color: #666; margin-bottom: 20px;">Each row represents one completed test</p>
         
         <table class="cb-table">
             <thead>
@@ -429,9 +447,22 @@ class CameraBattleSaver {
                 </tr>
             </thead>
             <tbody>
-                <?php foreach ($organized_data as $container_id => $data): ?>
+                <!-- Totals Row at Top -->
+                <tr style="background: #e8f4f8; font-weight: bold;">
+                    <td colspan="2"><strong>Total Wins</strong></td>
+                    <?php foreach ($images as $img): ?>
+                        <td style="text-align: center;">
+                            <span style="font-size: 18px; color: #2271b1;">
+                                <?php echo $totals[$img['image_title']]; ?>
+                            </span>
+                        </td>
+                    <?php endforeach; ?>
+                </tr>
+                
+                <!-- Individual Test Results -->
+                <?php foreach ($organized_data as $unique_key => $data): ?>
                     <tr>
-                        <td><?php echo esc_html($container_id); ?></td>
+                        <td><?php echo esc_html($data['container_id']); ?></td>
                         <td><?php echo date('M j, Y g:i a', strtotime($data['timestamp'])); ?></td>
                         <?php foreach ($images as $img): ?>
                             <td>
