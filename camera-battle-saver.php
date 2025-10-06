@@ -38,6 +38,7 @@ class CameraBattleSaver {
         
         // Add AJAX handler for CSV export
         add_action('wp_ajax_cb_export_csv', array($this, 'export_csv'));
+        add_action('wp_ajax_cb_export_all_csv', array($this, 'export_all_csv'));
     }
     
     /**
@@ -201,8 +202,9 @@ class CameraBattleSaver {
         // Get overall stats
         $total_votes = $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_name}");
         $total_sessions = count($sessions);
+        // Count total completed tests (unique timestamp + container_id combinations)
         $unique_users = $wpdb->get_var(
-            "SELECT COUNT(DISTINCT container_id) FROM {$this->summary_table_name}"
+            "SELECT COUNT(DISTINCT CONCAT(container_id, '_', timestamp)) FROM {$this->summary_table_name}"
         );
         
         ?>
@@ -222,7 +224,7 @@ class CameraBattleSaver {
                     <div class="number"><?php echo number_format($total_sessions); ?></div>
                 </div>
                 <div class="cb-stat-card">
-                    <h3>Unique Users</h3>
+                    <h3>Tests Completed</h3>
                     <div class="number"><?php echo number_format($unique_users); ?></div>
                 </div>
             </div>
@@ -234,6 +236,11 @@ class CameraBattleSaver {
             
             <!-- Overall Results Tab -->
             <div id="overall" class="cb-tab-content">
+                <div class="cb-filter-bar">
+                    <button class="cb-export-btn" onclick="exportAllData()">
+                        Export All Data
+                    </button>
+                </div>
                 <?php $this->render_overall_results(); ?>
             </div>
             
@@ -285,6 +292,10 @@ class CameraBattleSaver {
             window.location.href = '<?php echo admin_url('admin-ajax.php'); ?>?action=cb_export_csv&session=' + sessionId;
         }
         
+        function exportAllData() {
+            window.location.href = '<?php echo admin_url('admin-ajax.php'); ?>?action=cb_export_all_csv';
+        }
+        
         // Check if we need to switch to per-user tab on page load
         <?php if (isset($_GET['tab']) && $_GET['tab'] === 'per-user'): ?>
         document.addEventListener('DOMContentLoaded', function() {
@@ -305,6 +316,7 @@ class CameraBattleSaver {
         global $wpdb;
         
         // Get aggregated results across ALL users and ALL sessions
+        // Ordered by complete wins first, then click rate as tiebreaker
         $results = $wpdb->get_results(
             "SELECT 
                 image_title,
@@ -314,7 +326,7 @@ class CameraBattleSaver {
                 ROUND(SUM(clicks) * 100.0 / NULLIF(SUM(appearances), 0), 1) as click_rate
              FROM {$this->summary_table_name}
              GROUP BY image_title
-             ORDER BY total_clicks DESC",
+             ORDER BY total_complete_wins DESC, click_rate DESC",
             ARRAY_A
         );
         
@@ -460,9 +472,12 @@ class CameraBattleSaver {
                 </tr>
                 
                 <!-- Individual Test Results -->
-                <?php foreach ($organized_data as $unique_key => $data): ?>
+                <?php 
+                $result_number = count($organized_data);
+                foreach ($organized_data as $unique_key => $data): 
+                ?>
                     <tr>
-                        <td><?php echo esc_html($data['container_id']); ?></td>
+                        <td>Result <?php echo $result_number--; ?></td>
                         <td><?php echo date('M j, Y g:i a', strtotime($data['timestamp'])); ?></td>
                         <?php foreach ($images as $img): ?>
                             <td>
@@ -656,6 +671,72 @@ class CameraBattleSaver {
         
         foreach ($raw_data as $row) {
             fputcsv($output, array(
+                $row['timestamp'],
+                $row['container_id'],
+                $row['image1_title'],
+                $row['image2_title'],
+                $row['winner_title']
+            ));
+        }
+        
+        fclose($output);
+        exit;
+    }
+    
+    /**
+     * Export all data as CSV
+     */
+    public function export_all_csv() {
+        global $wpdb;
+        
+        if (!current_user_can('manage_options')) {
+            wp_die('Unauthorized');
+        }
+        
+        // Get all data from both tables
+        $raw_data = $wpdb->get_results(
+            "SELECT * FROM {$this->table_name} ORDER BY timestamp DESC",
+            ARRAY_A
+        );
+        
+        $summary_data = $wpdb->get_results(
+            "SELECT * FROM {$this->summary_table_name} ORDER BY timestamp DESC",
+            ARRAY_A
+        );
+        
+        // Set headers for CSV download
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="camera-battle-all-data-' . date('Y-m-d') . '.csv"');
+        
+        $output = fopen('php://output', 'w');
+        
+        // Write summary data
+        fputcsv($output, array('SUMMARY DATA - ALL SESSIONS'));
+        fputcsv($output, array('Session', 'User', 'Image', 'Clicks', 'Complete Wins', 'Appearances', 'Timestamp'));
+        
+        foreach ($summary_data as $row) {
+            fputcsv($output, array(
+                $row['session_id'],
+                $row['container_id'],
+                $row['image_title'],
+                $row['clicks'],
+                $row['complete_wins'],
+                $row['appearances'],
+                $row['timestamp']
+            ));
+        }
+        
+        // Add separator
+        fputcsv($output, array(''));
+        fputcsv($output, array(''));
+        
+        // Write raw vote data
+        fputcsv($output, array('RAW VOTE DATA - ALL SESSIONS'));
+        fputcsv($output, array('Session', 'Timestamp', 'User', 'Image 1', 'Image 2', 'Winner'));
+        
+        foreach ($raw_data as $row) {
+            fputcsv($output, array(
+                $row['session_id'],
                 $row['timestamp'],
                 $row['container_id'],
                 $row['image1_title'],
