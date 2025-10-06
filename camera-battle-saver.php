@@ -369,7 +369,21 @@ class CameraBattleSaver {
             return;
         }
         
-        // Get results grouped by container (user session)
+        // Get all unique images for this session
+        $images = $wpdb->get_results($wpdb->prepare(
+            "SELECT DISTINCT image_title 
+             FROM {$this->summary_table_name}
+             WHERE session_id = %s
+             ORDER BY image_title",
+            $session_id
+        ), ARRAY_A);
+        
+        if (empty($images)) {
+            echo '<div class="cb-no-data">No user data yet for this session.</div>';
+            return;
+        }
+        
+        // Get all user data for this session
         $user_results = $wpdb->get_results($wpdb->prepare(
             "SELECT 
                 container_id,
@@ -377,66 +391,74 @@ class CameraBattleSaver {
                 clicks,
                 complete_wins,
                 appearances,
-                ROUND(clicks * 100.0 / NULLIF(appearances, 0), 1) as click_rate,
                 timestamp
              FROM {$this->summary_table_name}
              WHERE session_id = %s
-             ORDER BY container_id, clicks DESC",
+             ORDER BY timestamp DESC",
             $session_id
         ), ARRAY_A);
         
-        if (empty($user_results)) {
-            echo '<div class="cb-no-data">No user data yet for this session.</div>';
-            return;
-        }
-        
-        // Group by container
-        $grouped = array();
+        // Organize data by container and image
+        $organized_data = array();
         foreach ($user_results as $row) {
-            $grouped[$row['container_id']][] = $row;
+            if (!isset($organized_data[$row['container_id']])) {
+                $organized_data[$row['container_id']] = array(
+                    'timestamp' => $row['timestamp'],
+                    'images' => array()
+                );
+            }
+            $organized_data[$row['container_id']]['images'][$row['image_title']] = array(
+                'clicks' => $row['clicks'],
+                'complete_wins' => $row['complete_wins'],
+                'appearances' => $row['appearances']
+            );
         }
         
         ?>
         <h2>Per User Results for Session: <?php echo esc_html($session_id); ?></h2>
+        <p style="color: #666; margin-bottom: 20px;">Each row represents one user's test results</p>
         
-        <?php foreach ($grouped as $container_id => $user_data): ?>
-            <div style="margin-bottom: 30px;">
-                <h3>User: <?php echo esc_html($container_id); ?></h3>
-                <p style="color: #666; font-size: 13px;">
-                    Completed: <?php echo date('F j, Y g:i a', strtotime($user_data[0]['timestamp'])); ?>
-                </p>
-                
-                <table class="cb-table">
-                    <thead>
-                        <tr>
-                            <th>Rank</th>
-                            <th>Image</th>
-                            <th>Clicks</th>
-                            <th>Complete Wins</th>
-                            <th>Appearances</th>
-                            <th>Click Rate</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php 
-                        $rank = 1;
-                        foreach ($user_data as $row): 
-                            $rate = floatval($row['click_rate']);
-                            $badge_class = $rate >= 60 ? 'high' : ($rate >= 40 ? 'medium' : 'low');
-                        ?>
-                            <tr>
-                                <td><strong>#<?php echo $rank++; ?></strong></td>
-                                <td><?php echo esc_html($row['image_title']); ?></td>
-                                <td><?php echo number_format($row['clicks']); ?></td>
-                                <td><?php echo number_format($row['complete_wins']); ?></td>
-                                <td><?php echo number_format($row['appearances']); ?></td>
-                                <td><span class="cb-badge <?php echo $badge_class; ?>"><?php echo $row['click_rate']; ?>%</span></td>
-                            </tr>
+        <table class="cb-table">
+            <thead>
+                <tr>
+                    <th>User ID</th>
+                    <th>Completed</th>
+                    <?php foreach ($images as $img): ?>
+                        <th><?php echo esc_html($img['image_title']); ?></th>
+                    <?php endforeach; ?>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($organized_data as $container_id => $data): ?>
+                    <tr>
+                        <td><?php echo esc_html($container_id); ?></td>
+                        <td><?php echo date('M j, Y g:i a', strtotime($data['timestamp'])); ?></td>
+                        <?php foreach ($images as $img): ?>
+                            <td>
+                                <?php 
+                                $image_title = $img['image_title'];
+                                if (isset($data['images'][$image_title])):
+                                    $img_data = $data['images'][$image_title];
+                                    $clicks = $img_data['clicks'];
+                                    $complete_wins = $img_data['complete_wins'];
+                                    $appearances = $img_data['appearances'];
+                                    $click_rate = $appearances > 0 ? round(($clicks / $appearances) * 100, 1) : 0;
+                                    $badge_class = $click_rate >= 60 ? 'high' : ($click_rate >= 40 ? 'medium' : 'low');
+                                ?>
+                                    <strong><?php echo $clicks; ?></strong> clicks
+                                    <?php if ($complete_wins > 0): ?>
+                                        <br><span class="cb-badge high" style="margin-top: 4px;">Winner</span>
+                                    <?php endif; ?>
+                                    <br><span style="font-size: 11px; color: #666;"><?php echo $click_rate; ?>% rate</span>
+                                <?php else: ?>
+                                    <span style="color: #ccc;">-</span>
+                                <?php endif; ?>
+                            </td>
                         <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
-        <?php endforeach; ?>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
         <?php
     }
     

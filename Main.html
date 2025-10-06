@@ -32,7 +32,7 @@
   </div>
 
   <div class="cb-footer">
-    <button class="cb-reset" type="button">Restart</button>
+    <button class="cb-reset" type="button" style="display:none;">Restart</button>
   </div>
 </div>
 
@@ -51,6 +51,8 @@
   .cb-footer{ margin-top:8px; display:flex; gap:8px; justify-content:center; flex-wrap:wrap; }
   .cb-footer button{ background:#f3f4f6; border:1px solid #e5e7eb; border-radius:8px; padding:8px 12px; cursor:pointer; }
   .cb-complete{ padding:24px; background:#f9fafb; border-radius:12px; }
+  .cb-result-img{ width:80px; height:80px; object-fit:cover; border-radius:8px; margin-right:12px; vertical-align:middle; }
+  .cb-result-row{ display:flex; align-items:center; margin-bottom:8px; }
   @media (prefers-reduced-motion: reduce){ .cb-card{ transition:none; } }
 </style>
 
@@ -289,6 +291,7 @@
     const stage = root.querySelector('.cb-stage');
     const progWrap = root.querySelector('.cb-progress');
     const bar = root.querySelector('.cb-progress-bar');
+    const resetBtn = root.querySelector('.cb-reset');
     const total = state.pairs.length;
     const done = Math.min(state.current, total);
     const pct = total ? Math.round((done/total)*100) : 0;
@@ -302,8 +305,13 @@
 
     if (done >= total){
       stage.innerHTML = renderComplete(images, state);
+      // Show reset button when test is complete
+      if (resetBtn) resetBtn.style.display = 'inline-block';
       return;
     }
+
+    // Hide reset button during test
+    if (resetBtn) resetBtn.style.display = 'none';
 
     const [aIdx,bIdx] = state.pairs[state.current];
     const a = images[aIdx], b = images[bIdx];
@@ -335,14 +343,27 @@
       const clicks = state.clicks[img.id] || 0;
       const completeWins = state.completeWins[img.id] || 0;
       const pct = app ? Math.round((clicks/app)*1000)/10 : 0;
-      return { id: img.id, title: img.title, clicks: clicks, completeWins: completeWins, appearances: app, pct };
+      return { 
+        id: img.id, 
+        title: img.title, 
+        url: img.url,
+        clicks: clicks, 
+        completeWins: completeWins, 
+        appearances: app, 
+        pct: pct 
+      };
     }).sort((a,b) => b.clicks - a.clicks || b.pct - a.pct);
 
     const items = rows.map(r => `
       <tr>
-        <td>${esc(r.title)} (#${r.id})</td>
+        <td style="display:flex; align-items:center;">
+          <img src="${esc(r.url)}" alt="${esc(r.title)}" class="cb-result-img">
+          <div>
+            <strong>${esc(r.title)}</strong>
+            ${r.completeWins > 0 ? '<br><span style="color:#28a745; font-size:12px;">★ Winner</span>' : ''}
+          </div>
+        </td>
         <td style="text-align:right;">${r.clicks}</td>
-        <td style="text-align:right;">${r.completeWins}</td>
         <td style="text-align:right;">${r.appearances}</td>
         <td style="text-align:right;">${r.pct}%</td>
       </tr>
@@ -356,12 +377,11 @@
             <tr>
               <th style="text-align:left;">Image</th>
               <th style="text-align:right;">Clicks</th>
-              <th style="text-align:right;">Complete Wins</th>
               <th style="text-align:right;">Appearances</th>
               <th style="text-align:right;">Click %</th>
             </tr>
           </thead>
-          <tbody>${items || '<tr><td colspan="5">No results.</td></tr>'}</tbody>
+          <tbody>${items || '<tr><td colspan="4">No results.</td></tr>'}</tbody>
         </table>
       </div>
     `;
