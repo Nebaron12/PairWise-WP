@@ -246,23 +246,32 @@ final class PairWise_Battler {
             return;
         }
 
-        wp_enqueue_style('pairwise-battler-admin', false);
-        wp_add_inline_style('pairwise-battler-admin', '
-            .pw-admin-wrap { max-width: 1200px; margin: 20px; }
-            .pw-tabs { border-bottom: 1px solid #ccc; margin-bottom: 20px; }
-            .pw-tab { display: inline-block; padding: 10px 20px; cursor: pointer; background: #f0f0f0; border: 1px solid #ccc; border-bottom: none; margin-right: 5px; }
-            .pw-tab.active { background: white; font-weight: bold; }
-            .pw-tab-content { display: none; }
-            .pw-tab-content.active { display: block; }
-            .pw-results-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-            .pw-results-table th, .pw-results-table td { padding: 12px; text-align: left; border: 1px solid #ddd; }
-            .pw-results-table th { background: #f5f5f5; font-weight: bold; }
-            .pw-results-table tr:hover { background: #f9f9f9; }
-            .pw-rank { font-weight: bold; color: #0073aa; }
-            .pw-winner { background: #d4edda; }
-            .pw-export-btn { margin: 10px 0; padding: 8px 15px; background: #0073aa; color: white; border: none; cursor: pointer; border-radius: 3px; }
-            .pw-export-btn:hover { background: #005a87; }
-            .pw-session-filter { margin: 10px 0; padding: 8px; border: 1px solid #ddd; border-radius: 3px; }
+        wp_add_inline_style('wp-admin', '
+            .pw-admin-wrap { max-width: 1200px; margin: 20px 0; }
+            .pw-admin-header { background: #fff; padding: 20px; margin-bottom: 20px; border-left: 4px solid #2271b1; }
+            .pw-admin-header h1 { margin: 0 0 10px; }
+            .pw-stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
+            .pw-stat-card { background: #fff; padding: 20px; border-left: 4px solid #2271b1; }
+            .pw-stat-card h3 { margin: 0 0 10px; font-size: 14px; color: #666; text-transform: uppercase; }
+            .pw-stat-card .number { font-size: 32px; font-weight: bold; color: #2271b1; }
+            .pw-tabs { background: #fff; margin-bottom: 20px; border-bottom: 1px solid #ccd0d4; }
+            .pw-tabs button { background: none; border: none; padding: 15px 20px; cursor: pointer; font-size: 14px; color: #50575e; border-bottom: 2px solid transparent; }
+            .pw-tabs button.active { color: #2271b1; border-bottom-color: #2271b1; font-weight: 600; }
+            .pw-tabs button:hover { color: #2271b1; }
+            .pw-tab-content { background: #fff; padding: 20px; }
+            .pw-table { width: 100%; border-collapse: collapse; }
+            .pw-table th { text-align: left; padding: 12px; background: #f6f7f7; border-bottom: 2px solid #ccd0d4; font-weight: 600; }
+            .pw-table td { padding: 12px; border-bottom: 1px solid #e5e5e5; }
+            .pw-table tr:hover { background: #f6f7f7; }
+            .pw-session-select { padding: 8px 12px; font-size: 14px; margin-bottom: 15px; }
+            .pw-filter-bar { display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; align-items: center; }
+            .pw-badge { display: inline-block; padding: 4px 8px; border-radius: 3px; font-size: 12px; font-weight: 600; }
+            .pw-badge.high { background: #d4edda; color: #155724; }
+            .pw-badge.medium { background: #fff3cd; color: #856404; }
+            .pw-badge.low { background: #f8d7da; color: #721c24; }
+            .pw-export-btn { background: #2271b1; color: #fff; border: none; padding: 10px 20px; cursor: pointer; border-radius: 3px; }
+            .pw-export-btn:hover { background: #135e96; }
+            .pw-no-data { text-align: center; padding: 40px; color: #666; }
             .pw-totals-row { background: #e8f4f8; font-weight: bold; }
         ');
     }
@@ -287,46 +296,127 @@ final class PairWise_Battler {
             exit;
         }
 
-        // Get all sessions
-        $sessions = $wpdb->get_col("SELECT DISTINCT session_id FROM $table_results ORDER BY created_at DESC");
+        // Get all sessions with stats
+        $sessions = $wpdb->get_results(
+            "SELECT DISTINCT session_id, COUNT(*) as total_votes, MIN(created_at) as first_vote, MAX(created_at) as last_vote 
+             FROM $table_summary 
+             GROUP BY session_id 
+             ORDER BY last_vote DESC",
+            ARRAY_A
+        );
+        
+        // Get selected session (default to most recent)
+        $selected_session = isset($_GET['session']) ? sanitize_text_field($_GET['session']) : '';
+        if (empty($selected_session) && !empty($sessions)) {
+            $selected_session = $sessions[0]['session_id'];
+        }
+        
+        // Get overall stats
+        $total_votes = $wpdb->get_var("SELECT SUM(clicks) FROM $table_summary");
+        $total_sessions = count($sessions);
+        $unique_users = $wpdb->get_var(
+            "SELECT COUNT(DISTINCT session_id) FROM $table_summary"
+        );
 
         ?>
-        <div class="pw-admin-wrap">
-            <h1>PairWise Battler Results</h1>
+        <div class="wrap pw-admin-wrap">
+            <div class="pw-admin-header">
+                <h1>📊 PairWise Battler Results</h1>
+                <p>View and analyze results from your image comparison tests</p>
+            </div>
+            
+            <div class="pw-stats-grid">
+                <div class="pw-stat-card">
+                    <h3>Total Clicks</h3>
+                    <div class="number"><?php echo number_format($total_votes); ?></div>
+                </div>
+                <div class="pw-stat-card">
+                    <h3>Sessions</h3>
+                    <div class="number"><?php echo number_format($total_sessions); ?></div>
+                </div>
+                <div class="pw-stat-card">
+                    <h3>Tests Completed</h3>
+                    <div class="number"><?php echo number_format($unique_users); ?></div>
+                </div>
+            </div>
             
             <div class="pw-tabs">
-                <div class="pw-tab active" data-tab="overall">Overall Results</div>
-                <div class="pw-tab" data-tab="per-user">Per-User Results</div>
+                <button class="pw-tab-btn active" onclick="switchTab(event, 'overall')">Overall Results</button>
+                <button class="pw-tab-btn" onclick="switchTab(event, 'per-user')">Per User Results</button>
             </div>
 
-            <div id="overall" class="pw-tab-content active">
+            <!-- Overall Results Tab -->
+            <div id="overall" class="pw-tab-content">
+                <div class="pw-filter-bar">
+                    <button class="pw-export-btn" onclick="exportAllData()">
+                        Export All Data
+                    </button>
+                </div>
                 <?php $this->render_overall_results(); ?>
             </div>
 
-            <div id="per-user" class="pw-tab-content">
-                <?php $this->render_per_user_results($sessions); ?>
+            <!-- Per User Results Tab -->
+            <div id="per-user" class="pw-tab-content" style="display:none;">
+                <?php if (!empty($sessions)): ?>
+                    <div class="pw-filter-bar">
+                        <label for="session-select"><strong>Select Session:</strong></label>
+                        <select id="session-select" class="pw-session-select" onchange="window.location.href='?page=pairwise-battler&tab=per-user&session=' + this.value">
+                            <?php foreach ($sessions as $session): ?>
+                                <option value="<?php echo esc_attr($session['session_id']); ?>" 
+                                        <?php selected($selected_session, $session['session_id']); ?>>
+                                    <?php echo esc_html($session['session_id']); ?> 
+                                    (<?php echo $session['total_votes']; ?> votes, 
+                                    <?php echo date('M j, Y', strtotime($session['last_vote'])); ?>)
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        
+                        <button class="pw-export-btn" onclick="exportSessionData('<?php echo esc_js($selected_session); ?>')">
+                            Export CSV
+                        </button>
+                    </div>
+                <?php endif; ?>
+                <?php $this->render_per_user_results($selected_session); ?>
             </div>
-
-            <script>
-                document.querySelectorAll('.pw-tab').forEach(tab => {
-                    tab.addEventListener('click', function() {
-                        document.querySelectorAll('.pw-tab').forEach(t => t.classList.remove('active'));
-                        document.querySelectorAll('.pw-tab-content').forEach(c => c.classList.remove('active'));
-                        this.classList.add('active');
-                        document.getElementById(this.dataset.tab).classList.add('active');
-                    });
-                });
-
-                function filterPerUserResults() {
-                    const session = document.getElementById('session-filter').value;
-                    if (session) {
-                        window.location.href = '?page=pairwise-battler&filter_session=' + session;
-                    } else {
-                        window.location.href = '?page=pairwise-battler';
-                    }
-                }
-            </script>
         </div>
+        
+        <script>
+        function switchTab(evt, tabName) {
+            // Hide all tab content
+            var tabContent = document.getElementsByClassName("pw-tab-content");
+            for (var i = 0; i < tabContent.length; i++) {
+                tabContent[i].style.display = "none";
+            }
+            
+            // Remove active class from all buttons
+            var tabButtons = document.getElementsByClassName("pw-tab-btn");
+            for (var i = 0; i < tabButtons.length; i++) {
+                tabButtons[i].classList.remove("active");
+            }
+            
+            // Show current tab and mark button as active
+            document.getElementById(tabName).style.display = "block";
+            evt.currentTarget.classList.add("active");
+        }
+        
+        function exportSessionData(sessionId) {
+            window.location.href = '<?php echo admin_url('admin.php'); ?>?page=pairwise-battler&export=csv&session=' + sessionId;
+        }
+        
+        function exportAllData() {
+            window.location.href = '<?php echo admin_url('admin.php'); ?>?page=pairwise-battler&export_all=csv';
+        }
+        
+        // Check if we need to switch to per-user tab on page load
+        <?php if (isset($_GET['tab']) && $_GET['tab'] === 'per-user'): ?>
+        document.addEventListener('DOMContentLoaded', function() {
+            var perUserTab = document.querySelector('.pw-tab-btn:nth-child(2)');
+            if (perUserTab) {
+                perUserTab.click();
+            }
+        });
+        <?php endif; ?>
+        </script>
         <?php
     }
     
@@ -335,149 +425,189 @@ final class PairWise_Battler {
      */
     private function render_overall_results() {
         global $wpdb;
-        $table_results = $wpdb->prefix . 'pairwise_results';
+        $table_summary = $wpdb->prefix . 'pairwise_summary';
 
+        // Get aggregated results across ALL users and ALL sessions
+        // Ordered by complete wins first, then click rate as tiebreaker
         $results = $wpdb->get_results(
-            "SELECT image_name, SUM(clicks) as total_clicks, SUM(complete_wins) as total_wins 
-            FROM $table_results 
-            GROUP BY image_name 
-            ORDER BY total_wins DESC, total_clicks DESC"
+            "SELECT 
+                image_name,
+                SUM(clicks) as total_clicks,
+                SUM(complete_wins) as total_complete_wins,
+                ROUND(SUM(complete_wins) * 100.0 / NULLIF(COUNT(*), 0), 1) as win_rate
+             FROM $table_summary
+             GROUP BY image_name
+             ORDER BY total_complete_wins DESC, win_rate DESC",
+            ARRAY_A
         );
 
-        echo '<button class="pw-export-btn" onclick="window.location.href=\'?page=pairwise-battler&export_all=csv\'">Export All Data (CSV)</button>';
-
         if (empty($results)) {
-            echo '<p>No results yet.</p>';
+            echo '<div class="pw-no-data">No results yet. Start collecting votes first!</div>';
             return;
         }
 
-        echo '<table class="pw-results-table">';
-        echo '<thead><tr><th>Rank</th><th>Image</th><th>Complete Wins</th><th>Total Clicks</th><th>Click Rate</th></tr></thead>';
-        echo '<tbody>';
-
-        $rank = 1;
-        foreach ($results as $result) {
-            $click_rate = $result->total_clicks > 0 ? round(($result->total_wins / $result->total_clicks) * 100, 1) : 0;
-            $row_class = $rank === 1 ? 'pw-winner' : '';
-            
-            echo "<tr class='$row_class'>";
-            echo "<td class='pw-rank'>#$rank</td>";
-            echo "<td>" . esc_html($result->image_name) . "</td>";
-            echo "<td>" . esc_html($result->total_wins) . "</td>";
-            echo "<td>" . esc_html($result->total_clicks) . "</td>";
-            echo "<td>" . esc_html($click_rate) . "%</td>";
-            echo "</tr>";
-            
-            $rank++;
-        }
-
-        echo '</tbody></table>';
+        ?>
+        <h2>Overall Results - All Users & Sessions</h2>
+        <p style="color: #666; margin-bottom: 20px;">Aggregated data from all tests ever conducted</p>
+        <table class="pw-table">
+            <thead>
+                <tr>
+                    <th>Rank</th>
+                    <th>Image</th>
+                    <th>Total Clicks</th>
+                    <th>Complete Wins</th>
+                    <th>Win Rate</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php 
+                $rank = 1;
+                foreach ($results as $row): 
+                    $rate = floatval($row['win_rate']);
+                    $badge_class = $rate >= 60 ? 'high' : ($rate >= 40 ? 'medium' : 'low');
+                ?>
+                    <tr>
+                        <td><strong>#<?php echo $rank++; ?></strong></td>
+                        <td><?php echo esc_html($row['image_name']); ?></td>
+                        <td><?php echo number_format($row['total_clicks']); ?></td>
+                        <td><?php echo number_format($row['total_complete_wins']); ?></td>
+                        <td><span class="pw-badge <?php echo $badge_class; ?>"><?php echo $row['win_rate']; ?>%</span></td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+        <?php
     }
     
     /**
      * Render per-user results
      */
-    private function render_per_user_results($sessions) {
+    private function render_per_user_results($session_id) {
         global $wpdb;
-        $table_results = $wpdb->prefix . 'pairwise_results';
+        $table_summary = $wpdb->prefix . 'pairwise_summary';
 
-        $selected_session = isset($_GET['filter_session']) ? sanitize_text_field($_GET['filter_session']) : '';
-
-        echo '<label for="session-filter">Filter by Session: </label>';
-        echo '<select id="session-filter" class="pw-session-filter" onchange="filterPerUserResults()">';
-        echo '<option value="">-- All Sessions --</option>';
-        foreach ($sessions as $session) {
-            $selected = $selected_session === $session ? 'selected' : '';
-            echo "<option value='" . esc_attr($session) . "' $selected>" . esc_html($session) . "</option>";
-        }
-        echo '</select>';
-
-        if ($selected_session) {
-            echo '<button class="pw-export-btn" onclick="window.location.href=\'?page=pairwise-battler&export=csv&session=' . esc_attr($selected_session) . '\'">Export This Session (CSV)</button>';
-        }
-
-        // Get results based on filter
-        if ($selected_session) {
-            $results = $wpdb->get_results($wpdb->prepare(
-                "SELECT * FROM $table_results WHERE session_id = %s ORDER BY session_id, complete_wins DESC, clicks DESC",
-                $selected_session
-            ));
-        } else {
-            $results = $wpdb->get_results(
-                "SELECT * FROM $table_results ORDER BY session_id, complete_wins DESC, clicks DESC"
-            );
-        }
-
-        if (empty($results)) {
-            echo '<p>No results found.</p>';
+        if (empty($session_id)) {
+            echo '<div class="pw-no-data">No session data available.</div>';
             return;
         }
 
-        // Organize data by session
+        // Get all unique images for this session
+        $images = $wpdb->get_results($wpdb->prepare(
+            "SELECT DISTINCT image_name 
+             FROM $table_summary
+             WHERE session_id = %s
+             ORDER BY image_name",
+            $session_id
+        ), ARRAY_A);
+
+        if (empty($images)) {
+            echo '<div class="pw-no-data">No user data yet for this session.</div>';
+            return;
+        }
+
+        // Get all user data for this session (each row is a separate test completion)
+        $user_results = $wpdb->get_results($wpdb->prepare(
+            "SELECT 
+                id,
+                image_name,
+                clicks,
+                complete_wins,
+                created_at
+             FROM $table_summary
+             WHERE session_id = %s
+             ORDER BY created_at DESC",
+            $session_id
+        ), ARRAY_A);
+
+        // Organize data by unique test completion (using created_at as unique identifier)
         $organized_data = array();
-        $all_images = array();
-
-        foreach ($results as $result) {
-            if (!isset($organized_data[$result->session_id])) {
-                $organized_data[$result->session_id] = array();
-            }
-            $organized_data[$result->session_id][$result->image_name] = array(
-                'clicks' => $result->clicks,
-                'wins' => $result->complete_wins
-            );
-            if (!in_array($result->image_name, $all_images)) {
-                $all_images[] = $result->image_name;
-            }
-        }
-
-        // Calculate totals
         $totals = array();
-        foreach ($all_images as $image) {
-            $totals[$image] = array('clicks' => 0, 'wins' => 0);
+
+        // Initialize totals
+        foreach ($images as $img) {
+            $totals[$img['image_name']] = 0;
         }
 
-        foreach ($organized_data as $session_data) {
-            foreach ($session_data as $image => $data) {
-                $totals[$image]['clicks'] += $data['clicks'];
-                $totals[$image]['wins'] += $data['wins'];
+        foreach ($user_results as $row) {
+            // Use timestamp as unique key for each test
+            $unique_key = $row['created_at'];
+
+            if (!isset($organized_data[$unique_key])) {
+                $organized_data[$unique_key] = array(
+                    'timestamp' => $row['created_at'],
+                    'images' => array()
+                );
+            }
+
+            $organized_data[$unique_key]['images'][$row['image_name']] = array(
+                'clicks' => $row['clicks'],
+                'complete_wins' => $row['complete_wins']
+            );
+
+            // Add to totals if this image won
+            if ($row['complete_wins'] > 0) {
+                $totals[$row['image_name']]++;
             }
         }
 
-        // Display table
-        echo '<table class="pw-results-table">';
-        echo '<thead><tr><th>Result #</th>';
-        foreach ($all_images as $image) {
-            echo '<th>' . esc_html($image) . '</th>';
-        }
-        echo '</tr></thead><tbody>';
-
-        $result_number = count($organized_data);
-        foreach ($organized_data as $session_id => $session_data) {
-            echo '<tr>';
-            echo '<td><strong>Result ' . $result_number . '</strong><br><small>' . esc_html($session_id) . '</small></td>';
-            
-            foreach ($all_images as $image) {
-                if (isset($session_data[$image])) {
-                    $data = $session_data[$image];
-                    echo '<td>' . $data['wins'] . ' wins<br>' . $data['clicks'] . ' clicks</td>';
-                } else {
-                    echo '<td>-</td>';
-                }
-            }
-            
-            echo '</tr>';
-            $result_number--;
-        }
-
-        // Totals row
-        echo '<tr class="pw-totals-row">';
-        echo '<td>TOTALS</td>';
-        foreach ($all_images as $image) {
-            echo '<td>' . $totals[$image]['wins'] . ' wins<br>' . $totals[$image]['clicks'] . ' clicks</td>';
-        }
-        echo '</tr>';
-
-        echo '</tbody></table>';
+        ?>
+        <h2>Per User Results for Session: <?php echo esc_html($session_id); ?></h2>
+        <p style="color: #666; margin-bottom: 20px;">Each row represents one completed test</p>
+        
+        <table class="pw-table">
+            <thead>
+                <tr>
+                    <th>User ID</th>
+                    <th>Completed</th>
+                    <?php foreach ($images as $img): ?>
+                        <th><?php echo esc_html($img['image_name']); ?></th>
+                    <?php endforeach; ?>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Totals Row at Top -->
+                <tr class="pw-totals-row">
+                    <td colspan="2"><strong>Total Wins</strong></td>
+                    <?php foreach ($images as $img): ?>
+                        <td style="text-align: center;">
+                            <span style="font-size: 18px; color: #2271b1;">
+                                <?php echo $totals[$img['image_name']]; ?>
+                            </span>
+                        </td>
+                    <?php endforeach; ?>
+                </tr>
+                
+                <!-- Individual Test Results -->
+                <?php 
+                $result_number = count($organized_data);
+                foreach ($organized_data as $unique_key => $data): 
+                ?>
+                    <tr>
+                        <td>Result <?php echo $result_number--; ?></td>
+                        <td><?php echo date('M j, Y g:i a', strtotime($data['timestamp'])); ?></td>
+                        <?php foreach ($images as $img): ?>
+                            <td>
+                                <?php 
+                                $image_title = $img['image_name'];
+                                if (isset($data['images'][$image_title])):
+                                    $img_data = $data['images'][$image_title];
+                                    $clicks = $img_data['clicks'];
+                                    $complete_wins = $img_data['complete_wins'];
+                                ?>
+                                    <strong><?php echo $clicks; ?></strong> clicks
+                                    <?php if ($complete_wins > 0): ?>
+                                        <br><span class="pw-badge high" style="margin-top: 4px;">Winner</span>
+                                    <?php endif; ?>
+                                <?php else: ?>
+                                    <span style="color: #ccc;">-</span>
+                                <?php endif; ?>
+                            </td>
+                        <?php endforeach; ?>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+        <?php
     }
     
     /**
