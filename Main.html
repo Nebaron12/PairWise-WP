@@ -38,7 +38,7 @@
 
 <style>
   .cb-widget{ max-width:980px; margin:0 auto; text-align:center; }
-  .cb-heading{ margin:0 0 12px; font-weight:700; }
+  .cb-heading{ margin:0 0 12px; font-weight:700; font-size:2rem; }
   .cb-row{ display:flex; gap:16px; align-items:stretch; justify-content:center; flex-wrap:wrap; }
   .cb-card{ flex:1 1 380px; border:0; background:#fff; cursor:pointer; padding:0;
             box-shadow:0 2px 10px rgba(0,0,0,.08); border-radius:12px; overflow:hidden;
@@ -54,6 +54,65 @@
   .cb-result-img{ width:80px; height:80px; object-fit:cover; border-radius:8px; margin-right:12px; vertical-align:middle; }
   .cb-result-row{ display:flex; align-items:center; margin-bottom:8px; }
   @media (prefers-reduced-motion: reduce){ .cb-card{ transition:none; } }
+
+  /* Table responsiveness */
+.cb-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.cb-complete .cb-table { width:100%; border-collapse:collapse; }
+.cb-complete .cb-table th,
+.cb-complete .cb-table td { padding:10px 8px; border-bottom:1px solid #eee; }
+
+/* Mobile: turn rows into cards */
+@media (max-width: 760px){
+  .cb-complete .cb-table,
+  .cb-complete .cb-table thead,
+  .cb-complete .cb-table tbody,
+  .cb-complete .cb-table tr,
+  .cb-complete .cb-table th,
+  .cb-complete .cb-table td { display:block; }
+  .cb-heading{ margin:0 0 12px; font-weight:700; font-size:1.3rem; }
+
+  .cb-complete .cb-table thead { position:absolute; left:-9999px; top:-9999px; }
+
+  .cb-complete .cb-table tr{
+    border:1px solid #eee;
+    border-radius:12px;
+    padding:12px;
+    margin-bottom:10px;
+    box-shadow:0 1px 6px rgba(0,0,0,.06);
+  }
+
+  .cb-complete .cb-table td{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:6px 0;
+    border:none !important;
+  }
+
+  /* First cell (image + title) spans full width */
+  .cb-complete .cb-table td:first-child{
+    display:flex;
+    justify-content:flex-start;
+    padding-bottom:8px;
+  }
+
+  .cb-result-img{ width:64px; height:64px; margin-right:10px; }
+
+  /* Inline labels for numeric fields */
+  .cb-complete .cb-table td:nth-child(2)::before{ content:"Clicks"; opacity:.6; margin-right:8px; }
+  .cb-complete .cb-table td:nth-child(3)::before{ content:"Appearances"; opacity:.6; margin-right:8px; }
+  .cb-complete .cb-table td:nth-child(4)::before{ content:"Click %"; opacity:.6; margin-right:8px; }
+
+  /* Numbers align nicely */
+  .cb-complete .cb-table td:nth-child(n+2){ font-variant-numeric: tabular-nums; }
+}
+
+
+.cb-complete table tbody>tr:nth-child(odd)>td,
+.cb-complete table tbody>tr:nth-child(odd)>th {
+  background-color: transparent !important;
+}
+
 </style>
 
 <script>
@@ -376,22 +435,25 @@
       </tr>
     `).join('');
 
-    return `
-      <div class="cb-complete">
-        <p><strong>Alle keuzes zijn gemaakt!</strong> Dankjewel voor de contributie! Klik <a href="https://memora-kids.nl/coming-soon"> hier </a> om je contactgegevens achter te laten.</p>
-        <table style="width:100%; border-collapse:collapse;">
-          <thead>
-            <tr>
-              <th style="text-align:left;">Image</th>
-              <th style="text-align:right;">Clicks</th>
-              <th style="text-align:right;">Appearances</th>
-              <th style="text-align:right;">Click %</th>
-            </tr>
-          </thead>
-          <tbody>${items || '<tr><td colspan="4">No results.</td></tr>'}</tbody>
-        </table>
-      </div>
-    `;
+return `
+  <div class="cb-complete">
+    <p><strong>Alle keuzes zijn gemaakt!</strong> Dankjewel voor de contributie! Klik <a href="https://memora-kids.nl/coming-soon">hier</a> om je contactgegevens achter te laten.</p>
+    <div class="cb-table-wrap">
+      <table class="cb-table">
+        <thead>
+          <tr>
+            <th style="text-align:left;">Image</th>
+            <th style="text-align:right;">Clicks</th>
+            <th style="text-align:right;">Appearances</th>
+            <th style="text-align:right;">Click %</th>
+          </tr>
+        </thead>
+        <tbody>${items || '<tr><td colspan="4">No results.</td></tr>'}</tbody>
+      </table>
+    </div>
+  </div>
+`;
+
   }
 
   function saveToWordPress(results, cfg, images, state){
