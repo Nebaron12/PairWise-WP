@@ -621,6 +621,7 @@ class pairwise_battler_Widget extends \Elementor\Widget_Base {
             const progWrap = root.querySelector('.cb-progress');
             const bar = root.querySelector('.cb-progress-bar');
             const resetBtn = root.querySelector('.cb-reset');
+            const showAfterCompletion = root.querySelector('.after-completion');
             const total = state.pairs.length;
             const done = Math.min(state.current, total);
             const pct = total ? Math.round((done/total)*100) : 0;
@@ -635,6 +636,7 @@ class pairwise_battler_Widget extends \Elementor\Widget_Base {
             if (done >= total){
               stage.innerHTML = renderComplete(images, state);
               if (resetBtn) resetBtn.style.display = 'inline-block';
+              if (showAfterCompletion) showAfterCompletion.style.display = 'inline-block';
               return;
             }
 
