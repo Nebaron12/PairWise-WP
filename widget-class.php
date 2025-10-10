@@ -325,6 +325,77 @@ class pairwise_battler_Widget extends \Elementor\Widget_Base {
         .cb-result-img{ width:80px; height:80px; object-fit:cover; border-radius:8px; margin-right:12px; vertical-align:middle; }
         .cb-result-row{ display:flex; align-items:center; margin-bottom:8px; }
         @media (prefers-reduced-motion: reduce){ .cb-card{ transition:none; } }
+
+
+
+/* --- Mobile-friendly results table --- */
+@media (max-width: 640px) {
+   /* kill theme zebra/gray backgrounds globally */
+.cb-complete table tr,
+.cb-complete table td,
+.cb-complete table th {
+  background: transparent !important;
+}
+  /* hide table header */
+  .cb-complete thead { display:none; }
+
+  /* turn each row into a “card” */
+  .cb-complete table,
+  .cb-complete tbody,
+  .cb-complete tr,
+  .cb-complete td { display:block; width:100%; }
+
+  .cb-complete tbody tr {
+    background:#fff !important;          /* keep the card white */
+    border:1px solid #e5e7eb;
+    border-radius:12px;
+    margin:12px 0;
+    padding:12px;
+    box-shadow:0 1px 2px rgba(0,0,0,.04);
+  }
+
+  .cb-complete tbody td { 
+    border:none; 
+    padding:8px 0; 
+    background:transparent !important;    /* remove inner gray cells */
+  }
+
+  /* labels above each value, taken from data-label="" */
+  .cb-complete tbody td::before {
+    content: attr(data-label);
+    display:block;
+    font-size:12px;
+    font-weight:600;
+    color:#6b7280;
+    margin-bottom:6px;
+  }
+
+  /* first cell keeps the image+title layout */
+  .cb-complete tbody td[data-label="Image"] {
+    display:flex;
+    gap:12px;
+    align-items:flex-start;
+  }
+  /* hide the "Image" label text on mobile */
+  .cb-complete tbody td[data-label="Image"]::before {
+    content:"" !important;
+    display:none !important;
+  }
+
+  /* numbers: label left, value right */
+  .cb-complete tbody td[data-label="Clicks"],
+  .cb-complete tbody td[data-label="Click %"] {
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    text-align:left !important; /* overrides inline right-align */
+  }
+
+  /* image size a tad smaller on mobile */
+  .cb-result-img { width:64px; height:64px; }
+}
+
+
         </style>
         
         <?php
@@ -611,22 +682,22 @@ class pairwise_battler_Widget extends \Elementor\Widget_Base {
 
             const items = rows.map(r => `
               <tr>
-                <td style="display:flex; align-items:center;">
+                <td data-label="Image" style="display:flex; align-items:center;">
                   <img src="${esc(r.url)}" alt="${esc(r.title)}" class="cb-result-img">
                   <div>
                     <strong>${esc(r.title)}</strong>
                     ${r.completeWins > 0 ? '<br><span style="color:#28a745; font-size:12px;">★ Winner</span>' : ''}
                   </div>
                 </td>
-                <td style="text-align:right;">${r.clicks}</td>
-                <td style="text-align:right;">${r.pct}%</td>
+                <td data-label="Clicks" style="text-align:right;">${r.clicks}</td>
+                <td data-label="Click %" style="text-align:right;">${r.pct}%</td>
               </tr>
             `).join('');
 
             return `
               <div class="cb-complete">
                 <p><strong><?php echo esc_js($completion_text); ?></strong></p>
-                <table style="width:100%; border-collapse:collapse;">
+                <table class="cb-results" style="width:100%; border-collapse:collapse;">
                   <thead>
                     <tr>
                       <th style="text-align:left;">Image</th>
@@ -638,6 +709,7 @@ class pairwise_battler_Widget extends \Elementor\Widget_Base {
                 </table>
               </div>
             `;
+
           }
 
           function saveToWordPress(results, cfg, images, state){
