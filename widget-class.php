@@ -272,12 +272,16 @@ class pairwise_battler_Widget extends \Elementor\Widget_Base {
         $base_session = !empty($settings['base_session']) ? esc_attr($settings['base_session']) : 'pairwise-battler';
         $webhook = !empty($settings['webhook_url']) ? esc_url($settings['webhook_url']) : '';
         
+        // Get REST API URL for use in JavaScript
+        $rest_url = rest_url('pairwise-battler/v1/save-results');
+        
         ?>
         <div class="cb-widget" id="<?php echo esc_attr($widget_id); ?>"
              data-session="<?php echo $base_session; ?>"
              data-shuffle="<?php echo $shuffle; ?>"
              data-progress="<?php echo $show_progress; ?>"
-             data-webhook="<?php echo $webhook; ?>">
+             data-webhook="<?php echo $webhook; ?>"
+             data-rest-url="<?php echo esc_url($rest_url); ?>">
             
             <h3 class="cb-heading"><?php echo esc_html($settings['heading_text']); ?></h3>
             
@@ -441,7 +445,8 @@ class pairwise_battler_Widget extends \Elementor\Widget_Base {
               session: userSession,
               shuffle: root.getAttribute('data-shuffle') === '1',
               progress: root.getAttribute('data-progress') === '1',
-              webhook: (root.getAttribute('data-webhook') || '').trim()
+              webhook: (root.getAttribute('data-webhook') || '').trim(),
+              restUrl: root.getAttribute('data-rest-url') || '/wp-json/pairwise-battler/v1/save-results'
             };
           }
           
@@ -646,11 +651,10 @@ class pairwise_battler_Widget extends \Elementor\Widget_Base {
               appearances: state.appearances[img.id] || 0
             }));
 
-            fetch('/wp-json/pairwise-battler/v1/save-results', {
+            fetch(cfg.restUrl, {
               method: 'POST',
               headers: {
-                'Content-Type': 'application/json',
-                'X-WP-Nonce': wpApiSettings?.nonce || ''
+                'Content-Type': 'application/json'
               },
               body: JSON.stringify({
                 session: cfg.session,
