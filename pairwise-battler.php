@@ -45,32 +45,21 @@ final class PairWise_Battler {
         global $wpdb;
         $charset_collate = $wpdb->get_charset_collate();
 
-        // Table for individual results
-        $table_results = $wpdb->prefix . 'pairwise_results';
-        $sql_results = "CREATE TABLE IF NOT EXISTS $table_results (
-            id bigint(20) NOT NULL AUTO_INCREMENT,
-            session_id varchar(100) NOT NULL,
-            image_name varchar(255) NOT NULL,
-            clicks int(11) NOT NULL DEFAULT 0,
-            complete_wins int(11) NOT NULL DEFAULT 0,
-            created_at datetime DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY  (id),
-            KEY session_id (session_id)
-        ) $charset_collate;";
-
-        // Table for summary data
+        // Table for summary data with clicks and complete wins per image
         $table_summary = $wpdb->prefix . 'pairwise_summary';
         $sql_summary = "CREATE TABLE IF NOT EXISTS $table_summary (
             id bigint(20) NOT NULL AUTO_INCREMENT,
-            session_id varchar(100) NOT NULL,
-            session_data text NOT NULL,
-            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            session_id varchar(255) NOT NULL,
+            image_name varchar(255) NOT NULL,
+            clicks int(11) DEFAULT 0,
+            complete_wins int(11) DEFAULT 0,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
             PRIMARY KEY  (id),
-            KEY session_id (session_id)
+            KEY session_id (session_id),
+            KEY image_name (image_name)
         ) $charset_collate;";
 
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
-        dbDelta($sql_results);
         dbDelta($sql_summary);
     }
     
@@ -171,35 +160,58 @@ final class PairWise_Battler {
         global $wpdb;
         
         $params = $request->get_json_params();
-        $session_id = sanitize_text_field($params['sessionId']);
-        $results = $params['results'];
+        
+        // Validate required fields
+        if (empty($params['session']) || empty($params['summary'])) {
+            return new WP_REST_Response(array(
+                'success' => false,
+                'message' => 'Missing required fields'
+            ), 400);
+        }
+        
+        $session_id = sanitize_text_field($params['session']);
+        $summary = $params['summary'];
 
-        $table_results = $wpdb->prefix . 'pairwise_results';
         $table_summary = $wpdb->prefix . 'pairwise_summary';
 
-        // Save individual results
-        foreach ($results as $result) {
-            $wpdb->insert(
-                $table_results,
-                array(
-                    'session_id' => $session_id,
-                    'image_name' => sanitize_text_field($result['name']),
-                    'clicks' => intval($result['clicks']),
-                    'complete_wins' => intval($result['completeWins'])
-                )
-            );
+        // Start transaction
+        $wpdb->query('START TRANSACTION');
+
+        try {
+            // Insert summary data with clicks and complete wins for each image
+            foreach ($summary as $item) {
+                $insert_result = $wpdb->insert(
+                    $table_summary,
+                    array(
+                        'session_id' => $session_id,
+                        'image_name' => sanitize_text_field($item['title']),
+                        'clicks' => intval($item['clicks']),
+                        'complete_wins' => intval($item['completeWins'])
+                    ),
+                    array('%s', '%s', '%d', '%d')
+                );
+                
+                if ($insert_result === false) {
+                    throw new Exception('Database insert failed: ' . $wpdb->last_error);
+                }
+            }
+
+            $wpdb->query('COMMIT');
+
+            return new WP_REST_Response(array(
+                'success' => true,
+                'message' => 'Results saved successfully',
+                'records_saved' => count($summary)
+            ), 200);
+
+        } catch (Exception $e) {
+            $wpdb->query('ROLLBACK');
+
+            return new WP_REST_Response(array(
+                'success' => false,
+                'message' => 'Database error: ' . $e->getMessage()
+            ), 500);
         }
-
-        // Save summary data
-        $wpdb->insert(
-            $table_summary,
-            array(
-                'session_id' => $session_id,
-                'session_data' => wp_json_encode($results)
-            )
-        );
-
-        return new WP_REST_Response(array('success' => true), 200);
     }
     
     /**
@@ -209,18 +221,21 @@ final class PairWise_Battler {
         global $wpdb;
         
         $session_id = $request->get_param('session_id');
-        $table_results = $wpdb->prefix . 'pairwise_results';
+        $table_summary = $wpdb->prefix . 'pairwise_summary';
 
         if ($session_id) {
             $results = $wpdb->get_results($wpdb->prepare(
-                "SELECT * FROM $table_results WHERE session_id = %s ORDER BY complete_wins DESC, clicks DESC",
+                "SELECT * FROM $table_summary WHERE session_id = %s ORDER BY complete_wins DESC, clicks DESC",
                 $session_id
-            ));
+            ), ARRAY_A);
         } else {
-            $results = $wpdb->get_results("SELECT * FROM $table_results ORDER BY created_at DESC");
+            $results = $wpdb->get_results("SELECT * FROM $table_summary ORDER BY created_at DESC", ARRAY_A);
         }
 
-        return new WP_REST_Response($results, 200);
+        return new WP_REST_Response(array(
+            'success' => true,
+            'results' => $results
+        ), 200);
     }
     
     /**
@@ -615,10 +630,10 @@ final class PairWise_Battler {
      */
     private function export_session_csv($session_id) {
         global $wpdb;
-        $table_results = $wpdb->prefix . 'pairwise_results';
+        $table_summary = $wpdb->prefix . 'pairwise_summary';
 
         $results = $wpdb->get_results($wpdb->prepare(
-            "SELECT * FROM $table_results WHERE session_id = %s ORDER BY complete_wins DESC, clicks DESC",
+            "SELECT * FROM $table_summary WHERE session_id = %s ORDER BY complete_wins DESC, clicks DESC",
             $session_id
         ));
 
@@ -626,10 +641,10 @@ final class PairWise_Battler {
         header('Content-Disposition: attachment; filename="pairwise-results-' . $session_id . '.csv"');
 
         $output = fopen('php://output', 'w');
-        fputcsv($output, array('Image Name', 'Clicks', 'Complete Wins'));
+        fputcsv($output, array('Image Name', 'Clicks', 'Complete Wins', 'Created At'));
 
         foreach ($results as $result) {
-            fputcsv($output, array($result->image_name, $result->clicks, $result->complete_wins));
+            fputcsv($output, array($result->image_name, $result->clicks, $result->complete_wins, $result->created_at));
         }
 
         fclose($output);
@@ -640,9 +655,9 @@ final class PairWise_Battler {
      */
     private function export_all_csv() {
         global $wpdb;
-        $table_results = $wpdb->prefix . 'pairwise_results';
+        $table_summary = $wpdb->prefix . 'pairwise_summary';
 
-        $results = $wpdb->get_results("SELECT * FROM $table_results ORDER BY session_id, complete_wins DESC, clicks DESC");
+        $results = $wpdb->get_results("SELECT * FROM $table_summary ORDER BY session_id, complete_wins DESC, clicks DESC");
 
         header('Content-Type: text/csv');
         header('Content-Disposition: attachment; filename="pairwise-all-results-' . date('Y-m-d') . '.csv"');
