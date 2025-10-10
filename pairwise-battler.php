@@ -45,7 +45,7 @@ final class PairWise_Battler {
         global $wpdb;
         $charset_collate = $wpdb->get_charset_collate();
 
-        // Table for summary data with clicks and complete wins per image
+        // Table for summary data with clicks and complete wins per image (for admin dashboard)
         $table_summary = $wpdb->prefix . 'pairwise_summary';
         $sql_summary = "CREATE TABLE IF NOT EXISTS $table_summary (
             id bigint(20) NOT NULL AUTO_INCREMENT,
@@ -59,8 +59,22 @@ final class PairWise_Battler {
             KEY image_name (image_name)
         ) $charset_collate;";
 
+        // Table for individual battle results (for CSV export)
+        $table_battles = $wpdb->prefix . 'pairwise_battles';
+        $sql_battles = "CREATE TABLE IF NOT EXISTS $table_battles (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            session_id varchar(255) NOT NULL,
+            image1_title varchar(255) NOT NULL,
+            image2_title varchar(255) NOT NULL,
+            winner_title varchar(255) NOT NULL,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
+            PRIMARY KEY  (id),
+            KEY session_id (session_id)
+        ) $charset_collate;";
+
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
         dbDelta($sql_summary);
+        dbDelta($sql_battles);
     }
     
     public function init() {
@@ -171,14 +185,16 @@ final class PairWise_Battler {
         
         $session_id = sanitize_text_field($params['session']);
         $summary = $params['summary'];
+        $results = isset($params['results']) ? $params['results'] : array();
 
         $table_summary = $wpdb->prefix . 'pairwise_summary';
+        $table_battles = $wpdb->prefix . 'pairwise_battles';
 
         // Start transaction
         $wpdb->query('START TRANSACTION');
 
         try {
-            // Insert summary data with clicks and complete wins for each image
+            // Insert summary data with clicks and complete wins for each image (for admin dashboard)
             foreach ($summary as $item) {
                 $insert_result = $wpdb->insert(
                     $table_summary,
@@ -196,12 +212,31 @@ final class PairWise_Battler {
                 }
             }
 
+            // Insert individual battle results (for CSV export)
+            foreach ($results as $battle) {
+                $insert_result = $wpdb->insert(
+                    $table_battles,
+                    array(
+                        'session_id' => $session_id,
+                        'image1_title' => sanitize_text_field($battle['image1_title']),
+                        'image2_title' => sanitize_text_field($battle['image2_title']),
+                        'winner_title' => sanitize_text_field($battle['winner_title'])
+                    ),
+                    array('%s', '%s', '%s', '%s')
+                );
+                
+                if ($insert_result === false) {
+                    throw new Exception('Database insert failed: ' . $wpdb->last_error);
+                }
+            }
+
             $wpdb->query('COMMIT');
 
             return new WP_REST_Response(array(
                 'success' => true,
                 'message' => 'Results saved successfully',
-                'records_saved' => count($summary)
+                'records_saved' => count($summary),
+                'battles_saved' => count($results)
             ), 200);
 
         } catch (Exception $e) {
@@ -626,56 +661,90 @@ final class PairWise_Battler {
     }
     
     /**
-     * Export session to CSV
+     * Export session to CSV - individual battles
      */
     private function export_session_csv($session_id) {
         global $wpdb;
-        $table_summary = $wpdb->prefix . 'pairwise_summary';
+        $table_battles = $wpdb->prefix . 'pairwise_battles';
 
         $results = $wpdb->get_results($wpdb->prepare(
-            "SELECT * FROM $table_summary WHERE session_id = %s ORDER BY complete_wins DESC, clicks DESC",
+            "SELECT * FROM $table_battles WHERE session_id = %s ORDER BY created_at ASC",
             $session_id
         ));
 
-        header('Content-Type: text/csv');
-        header('Content-Disposition: attachment; filename="pairwise-results-' . $session_id . '.csv"');
-
-        $output = fopen('php://output', 'w');
-        fputcsv($output, array('Image Name', 'Clicks', 'Complete Wins', 'Created At'));
-
-        foreach ($results as $result) {
-            fputcsv($output, array($result->image_name, $result->clicks, $result->complete_wins, $result->created_at));
+        // Clear any output buffering
+        if (ob_get_level()) {
+            ob_end_clean();
         }
 
-        fclose($output);
-    }
-    
-    /**
-     * Export all data to CSV
-     */
-    private function export_all_csv() {
-        global $wpdb;
-        $table_summary = $wpdb->prefix . 'pairwise_summary';
-
-        $results = $wpdb->get_results("SELECT * FROM $table_summary ORDER BY session_id, complete_wins DESC, clicks DESC");
-
-        header('Content-Type: text/csv');
-        header('Content-Disposition: attachment; filename="pairwise-all-results-' . date('Y-m-d') . '.csv"');
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="pairwise-battles-' . sanitize_file_name($session_id) . '.csv"');
+        header('Pragma: no-cache');
+        header('Expires: 0');
 
         $output = fopen('php://output', 'w');
-        fputcsv($output, array('Session ID', 'Image Name', 'Clicks', 'Complete Wins', 'Created At'));
+        
+        // Add BOM for UTF-8
+        fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
+        
+        // Header row
+        fputcsv($output, array('Session ID', 'Image 1', 'Image 2', 'Winner', 'Timestamp'));
 
+        // Data rows
         foreach ($results as $result) {
             fputcsv($output, array(
                 $result->session_id,
-                $result->image_name,
-                $result->clicks,
-                $result->complete_wins,
+                $result->image1_title,
+                $result->image2_title,
+                $result->winner_title,
                 $result->created_at
             ));
         }
 
         fclose($output);
+        exit;
+    }
+    
+    /**
+     * Export all data to CSV - individual battles from all sessions
+     */
+    private function export_all_csv() {
+        global $wpdb;
+        $table_battles = $wpdb->prefix . 'pairwise_battles';
+
+        $results = $wpdb->get_results("SELECT * FROM $table_battles ORDER BY session_id, created_at ASC");
+
+        // Clear any output buffering
+        if (ob_get_level()) {
+            ob_end_clean();
+        }
+
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="pairwise-all-battles-' . date('Y-m-d') . '.csv"');
+        header('Pragma: no-cache');
+        header('Expires: 0');
+
+        $output = fopen('php://output', 'w');
+        
+        // Add BOM for UTF-8
+        fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
+        
+        // Header row
+        fputcsv($output, array('Session ID', 'Image 1', 'Image 2', 'Winner', 'Timestamp'));
+
+        // Data rows
+        foreach ($results as $result) {
+            fputcsv($output, array(
+                $result->session_id,
+                $result->image1_title,
+                $result->image2_title,
+                $result->winner_title,
+                $result->created_at
+            ));
+        }
+
+        fclose($output);
+        exit;
     }
 }
 
