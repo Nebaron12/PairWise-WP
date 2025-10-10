@@ -619,7 +619,6 @@ class pairwise_battler_Widget extends \Elementor\Widget_Base {
                   </div>
                 </td>
                 <td style="text-align:right;">${r.clicks}</td>
-                <td style="text-align:right;">${r.appearances}</td>
                 <td style="text-align:right;">${r.pct}%</td>
               </tr>
             `).join('');
@@ -632,7 +631,6 @@ class pairwise_battler_Widget extends \Elementor\Widget_Base {
                     <tr>
                       <th style="text-align:left;">Image</th>
                       <th style="text-align:right;">Clicks</th>
-                      <th style="text-align:right;">Appearances</th>
                       <th style="text-align:right;">Click %</th>
                     </tr>
                   </thead>

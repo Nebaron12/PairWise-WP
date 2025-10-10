@@ -367,6 +367,9 @@ final class PairWise_Battler {
         $unique_users = $wpdb->get_var(
             "SELECT COUNT(DISTINCT session_id) FROM $table_summary"
         );
+        $unique_times = $wpdb->get_var(
+            "SELECT COUNT(DISTINCT created_at) FROM $table_summary"
+        );
 
         ?>
         <div class="wrap pw-admin-wrap">
@@ -386,7 +389,7 @@ final class PairWise_Battler {
                 </div>
                 <div class="pw-stat-card">
                     <h3>Tests Completed</h3>
-                    <div class="number"><?php echo number_format($unique_users); ?></div>
+                    <div class="number"><?php echo number_format($unique_times); ?></div>
                 </div>
             </div>
             
